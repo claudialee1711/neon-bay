@@ -1,101 +1,79 @@
-// Keyboard and pointer input. Held keys are read every frame; one-shot presses
-// (enter a car, carjack, pause, mute) are queued as bit flags and taken once by the
-// loop, so a press between two frames is never lost and never counted twice. The
-// mouse aims: the pointer's world position is where the player shoots.
+// Keyboard + mouse input for Neon Bay v2. Keys are tracked as a live set so
+// the player, the camera and later the car code all read the same state.
+// WASD and arrows move, Shift runs, Space is the action key, P pauses,
+// Enter confirms, M mutes (wired up by the audio stage).
+export const ACTION_UP = 'up';
+export const ACTION_DOWN = 'down';
+export const ACTION_LEFT = 'left';
+export const ACTION_RIGHT = 'right';
+export const ACTION_RUN = 'run';
+export const ACTION_USE = 'use';
+export const ACTION_PAUSE = 'pause';
+export const ACTION_CONFIRM = 'confirm';
+export const ACTION_MUTE = 'mute';
+export const ACTION_NEWGAME = 'newgame';
 
-export const ACTION_ENTER = 1;
-export const ACTION_CARJACK = 2;
-export const ACTION_PAUSE = 4;
-export const ACTION_CONFIRM = 8;
-export const ACTION_MUTE = 16;
-export const ACTION_INTERACT = 32;
-export const ACTION_NEWGAME = 64;
-
-const UP = new Set(['ArrowUp', 'KeyW']);
-const DOWN = new Set(['ArrowDown', 'KeyS']);
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
-const MUTE = new Set(['KeyM']);
+const KEY_MAP = {
+  KeyW: ACTION_UP, ArrowUp: ACTION_UP,
+  KeyS: ACTION_DOWN, ArrowDown: ACTION_DOWN,
+  KeyA: ACTION_LEFT, ArrowLeft: ACTION_LEFT,
+  KeyD: ACTION_RIGHT, ArrowRight: ACTION_RIGHT,
+  ShiftLeft: ACTION_RUN, ShiftRight: ACTION_RUN,
+  Space: ACTION_USE,
+  KeyP: ACTION_PAUSE, Escape: ACTION_PAUSE,
+  Enter: ACTION_CONFIRM,
+  KeyM: ACTION_MUTE,
+  KeyN: ACTION_NEWGAME,
+};
 
 export function createInput(canvas) {
-  const keys = { up: false, down: false, left: false, right: false, shoot: false, interactHeld: false };
-  let actions = 0;
-  let mouseX = 0;
-  let mouseY = 0;
-  let mouseIn = false;
+  const held = new Set();
+  const pressed = new Set();
+  const mouse = { x: 0, y: 0, down: false };
 
-  function setKey(code, value) {
-    if (UP.has(code)) keys.up = value;
-    else if (DOWN.has(code)) keys.down = value;
-    else if (LEFT.has(code)) keys.left = value;
-    else if (RIGHT.has(code)) keys.right = value;
+  function onKeyDown(event) {
+    const action = KEY_MAP[event.code];
+    if (!action) return;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) {
+      event.preventDefault();
+    }
+    if (!held.has(action)) pressed.add(action);
+    held.add(action);
+  }
+  function onKeyUp(event) {
+    const action = KEY_MAP[event.code];
+    if (action) held.delete(action);
+  }
+  function onMouseMove(event) {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = event.clientX - rect.left;
+    mouse.y = event.clientY - rect.top;
   }
 
-  window.addEventListener('keydown', (event) => {
-    if (UP.has(event.code) || DOWN.has(event.code) || LEFT.has(event.code) || RIGHT.has(event.code)) {
-      setKey(event.code, true);
-      event.preventDefault();
-      return;
-    }
-    if (event.code === 'Space') keys.shoot = true;
-    if (event.code === 'KeyE') keys.interactHeld = true;
-    if (event.repeat) return;
-    if (CONFIRM.has(event.code)) actions |= ACTION_CONFIRM;
-    else if (event.code === 'KeyE') actions |= ACTION_ENTER | ACTION_INTERACT;
-    else if (event.code === 'KeyF') actions |= ACTION_CARJACK;
-    else if (event.code === 'KeyN') actions |= ACTION_NEWGAME;
-    else if (PAUSE.has(event.code)) actions |= ACTION_PAUSE;
-    else if (MUTE.has(event.code)) actions |= ACTION_MUTE;
-    else return;
-    event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    setKey(event.code, false);
-    if (event.code === 'Space') keys.shoot = false;
-    if (event.code === 'KeyE') keys.interactHeld = false;
-  });
-  window.addEventListener('blur', () => {
-    keys.up = false; keys.down = false; keys.left = false; keys.right = false; keys.shoot = false;
-  });
-
-  canvas.addEventListener('pointermove', (event) => {
-    const rect = canvas.getBoundingClientRect();
-    mouseX = event.clientX - rect.left;
-    mouseY = event.clientY - rect.top;
-    mouseIn = true;
-  });
-  canvas.addEventListener('pointerdown', (event) => {
-    if (event.button === 0) {
-      keys.shoot = true;
-      actions |= ACTION_CONFIRM;
-    }
-  });
-  window.addEventListener('pointerup', (event) => {
-    if (event.button === 0) keys.shoot = false;
-  });
-  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mousedown', () => { mouse.down = true; });
+  window.addEventListener('mouseup', () => { mouse.down = false; });
+  window.addEventListener('blur', () => { held.clear(); });
 
   return {
-    keys,
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
+    held,
+    mouse,
+    is(action) { return held.has(action); },
+    /** True once, on the frame the key went down. */
+    wasPressed(action) { return pressed.has(action); },
+    /** Unit movement vector from the held movement keys. */
+    moveVector() {
+      let x = 0;
+      let y = 0;
+      if (held.has(ACTION_LEFT)) x -= 1;
+      if (held.has(ACTION_RIGHT)) x += 1;
+      if (held.has(ACTION_UP)) y -= 1;
+      if (held.has(ACTION_DOWN)) y += 1;
+      if (x !== 0 && y !== 0) { x *= Math.SQRT1_2; y *= Math.SQRT1_2; }
+      return { x, y };
     },
-    /** Pointer position in canvas CSS pixels, and whether it has been seen yet. */
-    mouse() {
-      return { x: mouseX, y: mouseY, inside: mouseIn };
-    },
-    /** Drive input for tests and staged shots: set the held keys directly. */
-    setKeys(next) {
-      Object.assign(keys, next);
-    },
-    /** Queue one-shot actions directly (tests and staged shots). */
-    queue(action) {
-      actions |= action;
-    },
+    endFrame() { pressed.clear(); },
   };
 }
