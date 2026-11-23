@@ -28,9 +28,10 @@ if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), joi
 
 // Neon Bay's own check before the dossier: the entry is not an entry without its
 // screenshots, so fail loudly here instead of handing in an empty folder.
+// v2 ship (Stage 4): 21 game modules, 4 fresh screenshots, city seed 77031 — Neon Bay rebuilt in recorded sessions, not copied from v1.
 const shots = existsSync(join(here, 'screenshots')) ? readdirSync(join(here, 'screenshots')).filter((f) => !f.startsWith('.')) : [];
 if (shots.length < 3) throw new Error(`Neon Bay needs 3 or 4 screenshots, found ${shots.length}`);
-console.log(`Neon Bay: handing in game/ and ${shots.length} screenshots to ${out}`);
+console.log(`Neon Bay v2: handing in game/ and ${shots.length} screenshots to ${out}`);
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
 // scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game
