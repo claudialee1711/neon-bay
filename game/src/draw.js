@@ -18,7 +18,7 @@ export function createRenderer(canvas) {
   window.addEventListener('resize', resize);
 
   function draw(state, dt) {
-    const { city, player, camera, weather } = state;
+    const { city, player, camera, weather, vehicles, pedestrians, effects } = state;
     walkPhase += dt * (player.moving ? player.speed / 28 : 0);
     const scale = canvas.width / VIEW.width;
     const viewH = canvas.height / scale;
@@ -143,11 +143,102 @@ export function createRenderer(canvas) {
       ctx.fillText(s.label, s.x, s.y - 16);
     }
 
-    drawPlayer(player);
+    drawSkids(effects, vx, vy, vw, vh);
+    drawCars(vehicles, vx, vy, vw, vh);
+    drawPedestrians(pedestrians, vx, vy, vw, vh);
+    if (!player.inCar) drawPlayer(player);
+    drawParticles(effects, vx, vy, vw, vh);
     drawWeatherOverlay(weather, vx, vy, vw, vh);
     // HUD layer: back to screen space (no camera translation).
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     drawHud(state, vw, vh);
+  }
+
+  function drawSkids(effects, vx, vy, vw, vh) {
+    if (!effects) return;
+    ctx.strokeStyle = 'rgba(12,12,14,0.55)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    for (const s of effects.skids) {
+      if (s.x1 < vx - 20 || s.x1 > vx + vw + 20 || s.y1 < vy - 20 || s.y1 > vy + vh + 20) continue;
+      ctx.moveTo(s.x1, s.y1);
+      ctx.lineTo(s.x2, s.y2);
+    }
+    ctx.stroke();
+  }
+
+  function drawCars(vehicles, vx, vy, vw, vh) {
+    if (!vehicles) return;
+    for (const car of vehicles.cars) {
+      if (car.x < vx - 60 || car.x > vx + vw + 60 || car.y < vy - 60 || car.y > vy + vh + 60) continue;
+      ctx.save();
+      ctx.translate(car.x, car.y);
+      ctx.rotate(car.angle);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(-car.length / 2 + 3, -car.width / 2 + 4, car.length, car.width);
+      ctx.fillStyle = car.colour;
+      ctx.beginPath();
+      ctx.roundRect(-car.length / 2, -car.width / 2, car.length, car.width, 7);
+      ctx.fill();
+      // Roof, windshield and headlights.
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(-car.length * 0.18, -car.width * 0.36, car.length * 0.36, car.width * 0.72);
+      ctx.fillStyle = '#bcd8ea';
+      ctx.fillRect(car.length * 0.22, -car.width * 0.36, 5, car.width * 0.72);
+      ctx.fillStyle = '#ffe9a8';
+      ctx.fillRect(car.length / 2 - 3, -car.width / 2 + 2, 3, 5);
+      ctx.fillRect(car.length / 2 - 3, car.width / 2 - 7, 3, 5);
+      ctx.restore();
+      if (car.kind === 'player') {
+        ctx.strokeStyle = '#ffd94d';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(car.x, car.y, car.length * 0.62, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawPedestrians(pedestrians, vx, vy, vw, vh) {
+    if (!pedestrians) return;
+    for (const p of pedestrians.list) {
+      if (p.x < vx - 20 || p.x > vx + vw + 20 || p.y < vy - 20 || p.y > vy + vh + 20) continue;
+      if (p.state === 'down') {
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(p.x + 2, p.y + 3, 11, 6, p.angle, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = p.colour;
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, 11, 6, p.angle, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(p.x + 2, p.y + 3, 8, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = p.colour;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#e8c9a0';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - 2, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawParticles(effects, vx, vy, vw, vh) {
+    if (!effects) return;
+    for (const p of effects.particles) {
+      if (p.x < vx - 20 || p.x > vx + vw + 20 || p.y < vy - 20 || p.y > vy + vh + 20) continue;
+      const a = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.kind === 'spark' ? `rgba(255,210,90,${a})` : p.kind === 'dust' ? `rgba(190,170,130,${a * 0.6})` : `rgba(160,160,160,${a * 0.45})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (p.kind === 'smoke' ? 1 + (1 - a) : 1), 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   function drawPlayer(player) {
@@ -220,7 +311,7 @@ export function createRenderer(canvas) {
     ctx.fillStyle = '#cfe3ff';
     ctx.fillText(`${districtAt(player.x, player.y)}  •  ${weather.label()}`, 24, 62);
     ctx.fillStyle = '#ffd94d';
-    ctx.fillText('On foot — WASD move, Shift run', 24, 82);
+    ctx.fillText(player.inCar ? 'Driving — WASD drive, Space brake, E to get out' : 'On foot — WASD move, Shift run, E near a car to steal it', 24, 82);
 
     // Small minimap, bottom-right: roads, sea, spots, player dot.
     const mw = 210;
@@ -242,6 +333,12 @@ export function createRenderer(canvas) {
       ctx.beginPath();
       ctx.arc(mx + s.x * sx, my + s.y * sy, 2.5, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (state.vehicles) {
+      ctx.fillStyle = '#9fd8ff';
+      for (const car of state.vehicles.cars) {
+        ctx.fillRect(mx + car.x * sx - 1, my + car.y * sy - 1, 2.5, 2.5);
+      }
     }
     ctx.fillStyle = '#fff';
     ctx.beginPath();

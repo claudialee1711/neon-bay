@@ -10,6 +10,8 @@ export function createPlayer(x, y) {
     radius: PLAYER.radius,
     speed: 0,
     moving: false,
+    /** True while the player is driving a car (Stage 2); the car moves them. */
+    inCar: false,
     health: PLAYER.health,
     money: 0,
     /** Seconds since the player last moved — the renderer idles the pose. */

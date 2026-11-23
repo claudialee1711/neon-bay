@@ -20,6 +20,7 @@ const KEY_MAP = {
   KeyD: ACTION_RIGHT, ArrowRight: ACTION_RIGHT,
   ShiftLeft: ACTION_RUN, ShiftRight: ACTION_RUN,
   Space: ACTION_USE,
+  KeyE: ACTION_USE, KeyF: ACTION_USE,
   KeyP: ACTION_PAUSE, Escape: ACTION_PAUSE,
   Enter: ACTION_CONFIRM,
   KeyM: ACTION_MUTE,
