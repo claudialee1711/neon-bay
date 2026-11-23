@@ -101,6 +101,8 @@ export function createVehicles(city, rng) {
     playerCar: null,
     /** Set when the player steals a moving traffic car — Stage 3 reads it for wanted. */
     stoleTraffic: false,
+    /** Count of pedestrians knocked down by any car — police read the delta. */
+    pedKnocks: 0,
     get parkedCount() { return cars.filter((c) => c.kind === 'parked').length; },
     get trafficCount() { return cars.filter((c) => c.kind === 'traffic').length; },
 
@@ -317,6 +319,7 @@ export function createVehicles(city, rng) {
           if (d < car.length / 2 + 8) {
             if (Math.abs(car.speed) > 90) {
               ped.knockDown(car.angle);
+              if (car.kind === 'player') vehicles.pedKnocks += 1;
               effects.burst(ped.x, ped.y, 'dust', 6);
             } else {
               ped.fleeFrom(car.x, car.y);

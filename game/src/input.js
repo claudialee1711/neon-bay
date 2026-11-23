@@ -12,6 +12,8 @@ export const ACTION_PAUSE = 'pause';
 export const ACTION_CONFIRM = 'confirm';
 export const ACTION_MUTE = 'mute';
 export const ACTION_NEWGAME = 'newgame';
+export const ACTION_ATTACK = 'attack';
+export const ACTION_SAVE = 'save';
 
 const KEY_MAP = {
   KeyW: ACTION_UP, ArrowUp: ACTION_UP,
@@ -20,7 +22,8 @@ const KEY_MAP = {
   KeyD: ACTION_RIGHT, ArrowRight: ACTION_RIGHT,
   ShiftLeft: ACTION_RUN, ShiftRight: ACTION_RUN,
   Space: ACTION_USE,
-  KeyE: ACTION_USE, KeyF: ACTION_USE,
+  KeyE: ACTION_USE,
+  KeyF: ACTION_ATTACK, KeyX: ACTION_SAVE,
   KeyP: ACTION_PAUSE, Escape: ACTION_PAUSE,
   Enter: ACTION_CONFIRM,
   KeyM: ACTION_MUTE,
@@ -30,7 +33,7 @@ const KEY_MAP = {
 export function createInput(canvas) {
   const held = new Set();
   const pressed = new Set();
-  const mouse = { x: 0, y: 0, down: false };
+  const mouse = { x: 0, y: 0, down: false, clicked: false };
 
   function onKeyDown(event) {
     const action = KEY_MAP[event.code];
@@ -54,7 +57,7 @@ export function createInput(canvas) {
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   canvas.addEventListener('mousemove', onMouseMove);
-  canvas.addEventListener('mousedown', () => { mouse.down = true; });
+  canvas.addEventListener('mousedown', () => { mouse.down = true; mouse.clicked = true; });
   window.addEventListener('mouseup', () => { mouse.down = false; });
   window.addEventListener('blur', () => { held.clear(); });
 
@@ -75,6 +78,6 @@ export function createInput(canvas) {
       if (x !== 0 && y !== 0) { x *= Math.SQRT1_2; y *= Math.SQRT1_2; }
       return { x, y };
     },
-    endFrame() { pressed.clear(); },
+    endFrame() { pressed.clear(); mouse.clicked = false; },
   };
 }
