@@ -11,7 +11,7 @@ import { SCREEN_PLAY, SCREEN_TITLE } from './render.js';
 
 const DRIVE_SECONDS = 22;
 const FOOT_SECONDS = 9;
-const CHASE_SECONDS = 16;
+const CHASE_SECONDS = 10;
 const NIGHT_SECONDS = 20;
 
 function angleDiff(a, b) {
@@ -36,9 +36,9 @@ function driveInput(state, target) {
   };
 }
 
-/** Follow the city's first traffic loop, waypoint by waypoint. */
-function roadAutopilot(state) {
-  const route = state.city.routes[0];
+/** Follow one of the city's traffic loops, waypoint by waypoint. */
+function roadAutopilot(state, routeIndex = 0) {
+  const route = state.city.routes[routeIndex];
   const car = state.player.inCar;
   if (!car) return driveInput(state, state.city.playerStart);
   let best = route[0];
@@ -47,10 +47,33 @@ function roadAutopilot(state) {
     const d = (wp.x - car.x) ** 2 + (wp.y - car.y) ** 2;
     if (d < bestD) { bestD = d; best = wp; }
   }
-  // Aim for the waypoint after the nearest one, so the car rounds corners.
   const idx = route.indexOf(best);
-  const target = route[(idx + 1) % route.length];
-  return driveInput(state, target);
+  // Only look ahead once the nearest waypoint is nearly reached: aiming past
+  // a corner cuts it diagonally through the buildings inside the block.
+  const target = bestD < 100 * 100 ? route[(idx + 1) % route.length] : best;
+  const input = driveInput(state, target);
+  // Slow for the corner ahead. Every waypoint on a rectangle loop is a
+  // 90-degree turn, and at full speed the car covers 500 units a second, so
+  // it cannot turn at the waypoint itself — it slides into the building
+  // inside the block instead. Only brake while still fast: braking all the
+  // way to a stop inside the zone strands the car there with no gas.
+  if (bestD < 320 * 320 && Math.abs(car.speed) > 260) input.up = false;
+  // Ease off the gas when another car is right ahead, instead of rear-ending it.
+  // Police cars do not count: braking for the cops chasing you is how you get caught.
+  const fx = Math.cos(car.angle);
+  const fy = Math.sin(car.angle);
+  for (const other of state.cars) {
+    if (other === car || other.dead || other.kind === 'police') continue;
+    const dx = other.x - car.x;
+    const dy = other.y - car.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 150 && d > 0.01 && (dx * fx + dy * fy) / d > 0.75) {
+      input.up = false;
+      if (d < 80) input.down = true;
+      break;
+    }
+  }
+  return input;
 }
 
 /** Walk at the nearest rival and shoot it. */
@@ -138,7 +161,8 @@ export function stageShot(name, world) {
     state.stars = 1;
     putPlayerInCar(world);
     for (let i = 0; i < NIGHT_SECONDS / STEP; i += 1) {
-      world.step(STEP, roadAutopilot(state));
+      // A different loop from the day drive, so the night frame is not the same corner.
+      world.step(STEP, roadAutopilot(state, 1));
     }
     return { screen: SCREEN_PLAY };
   }

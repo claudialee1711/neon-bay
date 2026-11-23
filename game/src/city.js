@@ -76,7 +76,8 @@ export function buildCity(random) {
       buildings.push({
         ...rect(bx, by, w, h),
         roof: roofColours[Math.floor(random() * roofColours.length)],
-        height: tall ? 3 + Math.floor(random() * 4) : 1 + Math.floor(random() * 2),
+        // Storeys, not pixels: the rect height above is the footprint.
+        floors: tall ? 3 + Math.floor(random() * 4) : 1 + Math.floor(random() * 2),
         lit: random(),
       });
       if (random() < 0.5) trees.push({ x: left + 20 + random() * 30, y: top + 20 + random() * 30, r: 10 + random() * 6 });

@@ -110,6 +110,7 @@ export function createWorld(random) {
       id: carId += 1, x, y, angle, speed: 0, color, kind,
       health: CAR.health, route: route || null, routeIndex: 0,
       waitTimer: 0, dead: false, driver: kind !== 'parked',
+      ramCooldown: 0, hitCooldown: 0,
     };
     return car;
   }
@@ -474,10 +475,18 @@ export function createWorld(random) {
       pushOutOfRect(car, b, 20);
       car.angle += Math.PI / 3;
     }
-    // Ram the player's car.
-    if (p.inCar && d < 46) {
-      p.inCar.health -= 6;
+    // Ram the player's car. The cooldown matters: without it this block runs
+    // every step (60/s) while a cop is touching the car, so one touch at
+    // 6 damage a step shreds a full-health car in under a second.
+    if (car.ramCooldown > 0) car.ramCooldown -= dt;
+    if (p.inCar && d < 46 && car.ramCooldown <= 0) {
+      car.ramCooldown = 1;
+      p.inCar.health -= 4;
       p.inCar.speed *= 0.7;
+      // The ram costs the rammer its speed too: without this the cop stays
+      // glued to the player's bumper at full speed and lands the next ram
+      // immediately, so a 3-star chase shreds a car in seconds.
+      car.speed *= 0.5;
       state.shake = Math.max(state.shake, 5);
       addParticles(car.x, car.y, 6, '#ffd76a', 160);
       if (p.inCar.health <= 0) explodeCar(p.inCar);
@@ -709,8 +718,14 @@ export function createWorld(random) {
     // explode mid-loop, and nothing below may touch it once it has.
     if (p.inCar && !p.inCar.dead) {
       const myCar = p.inCar;
+      // Collision damage is one hit per contact, not one per step: two cars
+      // stay overlapped for many steps while they push apart, and a fast cop
+      // ramming a stopped car would otherwise deal its impact damage 60x a
+      // second — the same per-frame bug the police ram had.
+      if (myCar.hitCooldown > 0) myCar.hitCooldown -= dt;
       for (const other of state.cars) {
         if (other === myCar || other.dead) continue;
+        if (other.hitCooldown > 0) other.hitCooldown -= dt;
         const d = Math.hypot(other.x - myCar.x, other.y - myCar.y);
         if (d < 44 && d > 0.01) {
           const push = (44 - d) / 2;
@@ -721,9 +736,19 @@ export function createWorld(random) {
           other.x += nx * push;
           other.y += ny * push;
           const impact = Math.abs(myCar.speed - other.speed);
-          if (impact > 180) {
-            myCar.health -= impact * 0.04;
+          if (impact > 180 && myCar.hitCooldown <= 0) {
+            myCar.hitCooldown = 0.5;
+            other.hitCooldown = 0.5;
+            // A police ram is a shove, not a wall: it hurts half as much as
+            // the same impact with a wall or a traffic car, or a cornered
+            // player gets mobbed to death in two seconds.
+            myCar.health -= impact * (other.kind === 'police' ? 0.02 : 0.04);
             other.health -= impact * 0.05;
+            // The speed cut lives here too, with the damage: applied every
+            // step while two cars overlap, it pins the player's speed near
+            // zero and the cops never let go.
+            if (!myCar.dead) myCar.speed *= 0.92;
+            if (other.kind === 'traffic') other.speed *= 0.6;
             addParticles(myCar.x, myCar.y, 6, '#ffd76a', 160);
             state.shake = Math.max(state.shake, 4);
             events |= EVENT_CRASH;
@@ -731,8 +756,6 @@ export function createWorld(random) {
             if (myCar.health <= 0) explodeCar(myCar);
             if (other.health <= 0 && other.kind !== 'player') explodeCar(other);
           }
-          if (!myCar.dead) myCar.speed *= 0.92;
-          if (other.kind === 'traffic') other.speed *= 0.6;
           if (myCar.dead) break;
         }
       }
